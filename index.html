@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>스마트 타이머</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@400;600;800&display=swap');
+        
+        body {
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
+        }
+
+        /* 타이머 종료 시 화면 전체 flashing 애니메이션 */
+        @keyframes flash-red {
+            0%, 100% { background-color: #f3f4f6; }
+            50% { background-color: #fecaca; }
+        }
+
+        .flash-animation {
+            animation: flash-red 0.8s infinite;
+        }
+
+        /* 종료 텍스트 바운스 효과 */
+        @keyframes pop-in {
+            0% { transform: scale(0.8); opacity: 0; }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        .pop-in {
+            animation: pop-in 0.4s ease-out forwards;
+        }
+    </style>
+</head>
+<body id="app-body" class="bg-gray-100 min-h-screen flex items-center justify-center p-4 transition-colors duration-300">
+
+    <!-- 메인 타이머 카트 Container -->
+    <div class="bg-white rounded-3xl shadow-2xl p-6 sm:p-10 w-full max-w-md text-center border border-gray-100 transition-all">
+        
+        <!-- 타이틀 -->
+        <h1 class="text-2xl sm:text-3xl font-extrabold text-gray-800 mb-6 flex items-center justify-center gap-2">
+            ⏱️ 스마트 타이머
+        </h1>
+
+        <!-- 디지털 타이머 디스플레이 -->
+        <div class="relative bg-slate-900 text-white rounded-2xl p-6 sm:p-8 mb-6 shadow-inner flex flex-col items-center justify-center overflow-hidden">
+            <!-- 진행률 표시 프로그레스 바 -->
+            <div id="progress-bar" class="absolute top-0 left-0 h-1.5 bg-gradient-to-r from-teal-400 via-indigo-500 to-pink-500 transition-all duration-300" style="width: 0%;"></div>
+
+            <!-- 시간 표시 (MM:SS) -->
+            <div id="timer-display" class="text-5xl sm:text-6xl font-black tracking-wider font-mono my-2 drop-shadow-md">
+                00:00
+            </div>
+
+            <!-- 안내 메시지 또는 시간 완료 메시지 영역 -->
+            <div id="status-message" class="text-sm font-semibold h-6 text-gray-400 mt-1">
+                시간을 설정해주세요 (최대 60분)
+            </div>
+        </div>
+
+        <!-- 1초 단위 세밀 조정 버튼 (+ / -) -->
+        <div class="flex justify-center items-center gap-4 mb-6">
+            <button id="btn-minus" onclick="adjustTime(-1)" 
+                class="w-14 h-14 bg-rose-100 hover:bg-rose-200 text-rose-600 font-bold text-2xl rounded-2xl shadow-sm transition transform active:scale-95 flex items-center justify-center border border-rose-200">
+                -1s
+            </button>
+            <span class="text-xs font-bold text-gray-400 tracking-wider uppercase">1초 단위</span>
+            <button id="btn-plus" onclick="adjustTime(1)" 
+                class="w-14 h-14 bg-emerald-100 hover:bg-emerald-200 text-emerald-600 font-bold text-2xl rounded-2xl shadow-sm transition transform active:scale-95 flex items-center justify-center border border-emerald-200">
+                +1s
+            </button>
+        </div>
+
+        <!-- 분 단위 누적 추가 버튼 (1분, 5분, 10분) -->
+        <div class="grid grid-cols-3 gap-3 mb-8">
+            <button onclick="addMinutes(1)" 
+                class="py-3 px-2 bg-gradient-to-br from-cyan-400 to-blue-500 hover:from-cyan-500 hover:to-blue-600 text-white font-bold rounded-xl shadow-md transition transform active:scale-95 text-sm sm:text-base">
+                +1분
+            </button>
+            <button onclick="addMinutes(5)" 
+                class="py-3 px-2 bg-gradient-to-br from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-bold rounded-xl shadow-md transition transform active:scale-95 text-sm sm:text-base">
+                +5분
+            </button>
+            <button onclick="addMinutes(10)" 
+                class="py-3 px-2 bg-gradient-to-br from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-bold rounded-xl shadow-md transition transform active:scale-95 text-sm sm:text-base">
+                +10분
+            </button>
+        </div>
+
+        <!-- 제어 버튼 영역 (Start/Stop, Reset) -->
+        <div class="grid grid-cols-2 gap-4">
+            <!-- Start / Stop 토글 버튼 -->
+            <button id="btn-toggle" onclick="toggleTimer()" 
+                class="py-4 bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold text-lg rounded-2xl shadow-lg transition transform active:scale-95 flex items-center justify-center gap-2">
+                <span id="toggle-icon">▶</span> <span id="toggle-text">시작</span>
+            </button>
+
+            <!-- Reset 버튼 -->
+            <button onclick="resetTimer()" 
+                class="py-4 bg-amber-500 hover:bg-amber-600 text-white font-extrabold text-lg rounded-2xl shadow-lg transition transform active:scale-95 flex items-center justify-center gap-2">
+                🔄 리셋
+            </button>
+        </div>
+
+    </div>
+
+    <!-- 스크립트 로직 -->
+    <script>
+        const MAX_SECONDS = 60 * 60; // 최대 시간: 60분 (3600초)
+        let totalSeconds = 0;        // 설정된 총 시간
+        let currentSeconds = 0;      // 남은 시간
+        let timerInterval = null;    // setInterval 참조
+        let isRunning = false;       // 실행 상태
+        let isFinished = false;      // 종료 상태
+
+        // DOM 요소 가져오기
+        const display = document.getElementById('timer-display');
+        const statusMessage = document.getElementById('status-message');
+        const progressBar = document.getElementById('progress-bar');
+        const appBody = document.getElementById('app-body');
+        const toggleBtn = document.getElementById('btn-toggle');
+        const toggleIcon = document.getElementById('toggle-icon');
+        const toggleText = document.getElementById('toggle-text');
+
+        // 화면 갱신 함수
+        function updateDisplay() {
+            const minutes = Math.floor(currentSeconds / 60);
+            const seconds = currentSeconds % 60;
+
+            // 00:00 포맷 출력
+            display.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+
+            // 프로그레스 바 갱신
+            if (totalSeconds > 0) {
+                const progressPercent = ((totalSeconds - currentSeconds) / totalSeconds) * 100;
+                progressBar.style.width = `${Math.min(progressPercent, 100)}%`;
+            } else {
+                progressBar.style.width = '0%';
+            }
+        }
+
+        // 1초 단위 시간 조정 (+ / -)
+        function adjustTime(amount) {
+            if (isRunning) return; // 실행 중일 때는 변경 방지
+            clearFinishState();    // 종료 상태 해제
+
+            let newTime = currentSeconds + amount;
+            if (newTime < 0) newTime = 0;
+            if (newTime > MAX_SECONDS) {
+                newTime = MAX_SECONDS;
+                showToastMessage("최대 설정 시간은 60분입니다.");
+            }
+
+            currentSeconds = newTime;
+            totalSeconds = currentSeconds; // 기준 전체 시간 등록
+            updateDisplay();
+
+            if (currentSeconds > 0) {
+                statusMessage.textContent = "준비 완료";
+                statusMessage.className = "text-sm font-semibold h-6 text-indigo-400 mt-1";
+            }
+        }
+
+        // 분 단위 누적 추가 (+1분, +5분, +10분)
+        function addMinutes(mins) {
+            clearFinishState();
+
+            let addedSeconds = mins * 60;
+            let newTime = currentSeconds + addedSeconds;
+
+            if (newTime > MAX_SECONDS) {
+                currentSeconds = MAX_SECONDS;
+                showToastMessage("최대 설정 시간은 60분입니다.");
+            } else {
+                currentSeconds = newTime;
+            }
+
+            totalSeconds = currentSeconds; // 누적 시간에 맞춰 총시간 갱신
+            updateDisplay();
+
+            statusMessage.textContent = `${mins}분이 추가되었습니다.`;
+            statusMessage.className = "text-sm font-semibold h-6 text-indigo-400 mt-1";
+        }
+
+        // 시작 / 일시정지(Stop) 토글
+        function toggleTimer() {
+            if (isFinished) {
+                resetTimer();
+                return;
+            }
+
+            if (currentSeconds <= 0) {
+                showToastMessage("먼저 시간을 설정해주세요!");
+                return;
+            }
+
+            if (isRunning) {
+                // 일시정지 (STOP)
+                clearInterval(timerInterval);
+                isRunning = false;
+                
+                // 버튼 스타일 변경 (Start 상태로)
+                toggleBtn.className = "py-4 bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold text-lg rounded-2xl shadow-lg transition transform active:scale-95 flex items-center justify-center gap-2";
+                toggleIcon.textContent = "▶";
+                toggleText.textContent = "시작";
+
+                statusMessage.textContent = "타이머 일시정지됨";
+                statusMessage.className = "text-sm font-semibold h-6 text-amber-500 mt-1";
+            } else {
+                // 시작 (START)
+                isRunning = true;
+                
+                // 버튼 스타일 변경 (Stop 상태로)
+                toggleBtn.className = "py-4 bg-rose-500 hover:bg-rose-600 text-white font-extrabold text-lg rounded-2xl shadow-lg transition transform active:scale-95 flex items-center justify-center gap-2";
+                toggleIcon.textContent = "⏸";
+                toggleText.textContent = "정지";
+
+                statusMessage.textContent = "타이머 동작 중...";
+                statusMessage.className = "text-sm font-semibold h-6 text-emerald-400 mt-1";
+
+                timerInterval = setInterval(() => {
+                    if (currentSeconds > 0) {
+                        currentSeconds--;
+                        updateDisplay();
+                    } else {
+                        onTimerFinished();
+                    }
+                }, 1000);
+            }
+        }
+
+        // 타이머 리셋
+        function resetTimer() {
+            clearInterval(timerInterval);
+            isRunning = false;
+            currentSeconds = 0;
+            totalSeconds = 0;
+
+            clearFinishState();
+            updateDisplay();
+
+            // Start 버튼 상태 원복
+            toggleBtn.className = "py-4 bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold text-lg rounded-2xl shadow-lg transition transform active:scale-95 flex items-center justify-center gap-2";
+            toggleIcon.textContent = "▶";
+            toggleText.textContent = "시작";
+
+            statusMessage.textContent = "타이머가 초기화되었습니다.";
+            statusMessage.className = "text-sm font-semibold h-6 text-gray-400 mt-1";
+        }
+
+        // 타이머 종료 처리
+        function onTimerFinished() {
+            clearInterval(timerInterval);
+            isRunning = false;
+            isFinished = true;
+
+            // 화면 깜빡임 애니메이션 적용
+            appBody.classList.add('flash-animation');
+
+            // 종료 메시지 출력 및 스타일 강조
+            statusMessage.textContent = "🔔 시간 종료!";
+            statusMessage.className = "text-lg font-black h-6 text-rose-500 mt-1 pop-in";
+
+            // 시작 버튼 상태 원복
+            toggleBtn.className = "py-4 bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold text-lg rounded-2xl shadow-lg transition transform active:scale-95 flex items-center justify-center gap-2";
+            toggleIcon.textContent = "▶";
+            toggleText.textContent = "시작";
+        }
+
+        // 종료 애니메이션 해제
+        function clearFinishState() {
+            if (isFinished) {
+                isFinished = false;
+                appBody.classList.remove('flash-animation');
+            }
+        }
+
+        // 간단 안내 메시지 출력
+        function showToastMessage(msg) {
+            statusMessage.textContent = msg;
+            statusMessage.className = "text-sm font-semibold h-6 text-rose-400 mt-1";
+        }
+
+        // 초기 화면 업데이트
+        updateDisplay();
+    </script>
+</body>
+</html>
